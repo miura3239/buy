@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>カスタム・レジ打ちマスター Pro</title>
+    <style>
+        body { font-family: sans-serif; background-color: #fdf6e3; display: flex; justify-content: center; padding: 20px; }
+        .container { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
+        h1 { text-align: center; color: #555; margin-bottom: 10px; }
+        
+        /* 設定エリア */
+        .admin-section { background: #e0f2f1; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #b2dfdb; }
+        .admin-section h2 { font-size: 1em; margin-top: 0; color: #00796b; margin-bottom: 10px; }
+        .input-group { display: flex; gap: 5px; margin-bottom: 10px; align-items: center; }
+        input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; flex: 1; font-size: 0.9em; }
+        .label-text { font-size: 0.85em; color: #00796b; font-weight: bold; min-width: 80px; }
+        .add-master-btn { background: #009688; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
+
+        /* 表示エリア */
+        .display { background: #333; color: #0f0; padding: 15px; border-radius: 5px; text-align: right; font-size: 1.2em; margin-bottom: 10px; border: 4px solid #555; }
+        .cart { font-size: 0.9em; color: #666; min-height: 40px; border-bottom: 1px solid #eee; margin-bottom: 10px; padding-bottom: 10px; line-height: 1.4; }
+        
+        /* 商品ボタンエリア */
+        .item-list { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .item-btn { background-color: #fff; border: 2px solid #ffab91; padding: 10px; border-radius: 8px; cursor: pointer; font-size: 0.9em; transition: 0.1s; }
+        .item-btn:active { background-color: #ffccbc; transform: translateY(2px); }
+
+        /* アクションボタン */
+        .action-area { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .btn { padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.1s; }
+        .btn:active { transform: translateY(2px); filter: brightness(0.9); }
+        .sale-btn { background: #fff176; border: 2px solid #fbc02d; grid-column: span 2; font-size: 1.1em; }
+        .pay-btn { background: #81c784; color: white; border-bottom: 4px solid #4caf50; }
+        .clear-btn { background: #ef9a9a; color: white; border-bottom: 4px solid #e57373; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🛒 じぶんレジ Pro</h1>
+
+    <div class="admin-section">
+        <h2>🛠️ お店のせってい</h2>
+        <div class="input-group">
+            <span class="label-text">商品追加:</span>
+            <input type="text" id="new-item-name" placeholder="商品名">
+            <input type="number" id="new-item-price" placeholder="値段">
+            <button class="add-master-btn" onclick="addNewProduct()">追加</button>
+        </div>
+        <div class="input-group">
+            <span class="label-text">タイムセール:</span>
+            <input type="number" id="discount-rate-input" value="10" min="0" max="100">
+            <span style="font-size: 0.9em; color: #00796b;">% 引きにする</span>
+        </div>
+    </div>
+
+    <div class="display" id="total-display">合計: ¥0</div>
+    <div id="status-badge" style="color: #d32f2f; font-weight: bold; font-size: 0.8em; height: 1.2em;"></div>
+    <div class="cart" id="cart-list">カートは空です</div>
+
+    <div class="item-list" id="button-container"></div>
+    
+    <div class="action-area">
+        <button class="btn sale-btn" id="sale-button-text" onclick="applyDiscount()">✨ タイムセール実行！ ✨</button>
+        <button class="btn pay-btn" onclick="checkout()">お会計 (10%税込)</button>
+        <button class="btn clear-btn" onclick="resetCart()">全部消す</button>
+    </div>
+</div>
+
+<script>
+    let cart = [];
+    let isDiscounted = false;
+    let activeDiscountRate = 0;
+
+    const defaultProducts = [
+        { name: 'りんご', price: 120 },
+        { name: '牛乳', price: 200 },
+        { name: 'パン', price: 150 }
+    ];
+
+    function renderButtons() {
+        const container = document.getElementById('button-container');
+        container.innerHTML = '';
+        defaultProducts.forEach(product => {
+            const btn = document.createElement('button');
+            btn.className = 'item-btn';
+            btn.innerHTML = `<b>${product.name}</b><br>¥${product.price}`;
+            btn.onclick = () => addItem(product.name, product.price);
+            container.appendChild(btn);
+        });
+    }
+
+    function addNewProduct() {
+        const name = document.getElementById('new-item-name').value;
+        const price = parseInt(document.getElementById('new-item-price').value);
+        if (name === "" || isNaN(price)) { alert("名前と値段を入れてね！"); return; }
+        defaultProducts.push({ name: name, price: price });
+        renderButtons();
+        document.getElementById('new-item-name').value = "";
+        document.getElementById('new-item-price').value = "";
+    }
+
+    function addItem(name, price) {
+        cart.push({ name: name, price: price });
+        updateDisplay();
+    }
+
+    function updateDisplay() {
+        const cartList = document.getElementById('cart-list');
+        const totalDisplay = document.getElementById('total-display');
+        const statusBadge = document.getElementById('status-badge');
+        
+        if (cart.length === 0) {
+            cartList.innerText = "カートは空です";
+            totalDisplay.innerText = "合計: ¥0";
+            statusBadge.innerText = "";
+            isDiscounted = false;
+            return;
+        }
+
+        let subtotal = cart.reduce((sum, item) => sum + item.price, 0);
+        
+        if (isDiscounted) {
+            // 割引計算: 元の値段 * (1 - 割引率/100)
+            subtotal = Math.floor(subtotal * (1 - activeDiscountRate / 100));
+            statusBadge.innerText = `🔥 タイムセール中！(${activeDiscountRate}% OFF)`;
+        } else {
+            statusBadge.innerText = "";
+        }
+
+        cartList.innerHTML = "<b>中身:</b> " + cart.map(item => item.name).join('、');
+        totalDisplay.innerText = `合計: ¥${subtotal}`;
+    }
+
+    function applyDiscount() {
+        if (cart.length === 0) return;
+        // 入力されている割引率を取得
+        activeDiscountRate = parseInt(document.getElementById('discount-rate-input').value);
+        if (isNaN(activeDiscountRate)) activeDiscountRate = 0;
+        
+        isDiscounted = true;
+        updateDisplay();
+    }
+
+    function checkout() {
+        if (cart.length === 0) return;
+        
+        let subtotal = cart.reduce((sum, item) => sum + item.price, 0);
+        if (isDiscounted) {
+            subtotal = Math.floor(subtotal * (1 - activeDiscountRate / 100));
+        }
+        
+        const tax = Math.floor(subtotal * 0.1);
+        const finalTotal = subtotal + tax;
+
+        const payment = prompt(`【レジ打ちチェック】\n税ぬき合計：¥${subtotal}\n消費税(10%)：¥${tax}\nお支払い合計：¥${finalTotal}\n\nいくら預かりますか？`);
+        
+        if (payment !== null) {
+            const change = payment - finalTotal;
+            if (change >= 0) {
+                alert(`お買い上げありがとうございます！\nお釣りは ¥${change} です。また来てね！`);
+                resetCart();
+            } else {
+                alert(`お金が ¥${Math.abs(change)} 足りないよ！`);
+            }
+        }
+    }
+
+    function resetCart() {
+        cart = [];
+        isDiscounted = false;
+        updateDisplay();
+    }
+
+    renderButtons();
+</script>
+
+</body>
+</html>
